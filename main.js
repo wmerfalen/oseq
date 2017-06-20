@@ -7,47 +7,36 @@
 // @match        https://onlinesequencer.net/*
 // @grant        none
 // Changelog for version 0.2
-// -- Added minimize button at the top right
-// -- resized window to show the close button at the top
+// -- @user_name now *mentions* that user
+//
 // ==/UserScript==
 
 (function() {
     //'use strict';
     if (window!=window.top) {
         //This evaluates if we are in an iframe (chat window)
-        $(window).scroll(function() {
-            //unused for now
-        });
-        return overrideFunctions();
+        overrideFunctions();
+        window.setTimeout(function(){
+            if(typeof $("#message").html() == 'undefined'){
+                window.setTimeout(this,300);
+                return;
+            }
+            $("#message").trigger('focus');
+        },300);
+        return;
     }else{
         //This evaluates if we are in the main window (not chat window)
         //TODO: add button to make window smaller
-        return override_outer_window_functions();
+        override_outer_window_functions();
+        showChat();
+        return;
     }
-
-
-
-    var plugin_div = $("<div>").css("left","0px")
-        .css("top","0px")
-        .css("position","absolute")
-        .css("background-color","green")
-        .css("width","100px")
-        .css("height","100px");
-    var activation_button = $("<button>")
-        .bind('click',function(){
-            showChat();
-        })
-        .attr('id','activate_plugin')
-        .html("Activate Plugin")
-    ;
-
     function override_outer_window_functions(){
         window.showChat = function(){
             orig_showChat();
             window.setTimeout(function(){
                 var max_retries = 10;
                 if(typeof $("#chat_iframe").html() == 'undefined'){
-                    console.log("chat_iframe not populated yet...");
                     if(--max_retries === 0){
                         return;
                     }else{
@@ -87,12 +76,13 @@
         ofSelf.scrolling_up = false;
         ofSelf.queue_messages = false;
         ofSelf.queued_message_count = 0;
+        ofSelf.username_capture = false;
         ofSelf.container = {
             'message_queue': []
         };
+
         window.setTimeout(function(){
             var mousewheelevt = (/Firefox/i.test(navigator.userAgent)) ? "DOMMouseScroll" : "mousewheel"; //FF doesn't recognize mousewheel as of FF3.x
-            console.log("Chatbox: " + $("#chat_table"));
             $('#chat_table').bind(mousewheelevt, function(e){
                 var evt = window.event || e; //equalize event object
                 evt = evt.originalEvent ? evt.originalEvent : evt; //convert to originalEvent if possible
@@ -100,14 +90,10 @@
 
                 if(delta > 0) {
                     //scroll up
-                    console.log("scroll up");
                     ofSelf.scrolling_up = true;
                     ofSelf.trigger('scrolling_up');
                 }
                 else{
-                    //scroll down
-                    console.log("scroll down");
-                    //TODO: when the user scrolls back down to the end of the chat, unqueue the messages and remove the queue_message div
                     ofSelf.scrolling_up = false;
                     if($(window).scrollTop() + $(window).height() == $(document).height()) {
                         ofSelf.trigger('close_queued_messages');
@@ -116,37 +102,11 @@
             });
         },3000);
 
-        /*
-
-        ##
-        ## The following functions are just to use for testing.. they simulate scrolling up and messages coming in ##
-        ##
-
-        window.setTimeout(function(){
-            ofSelf.trigger('scrolling_up');
-        },4000);
-
-        window.setTimeout(function(){
-            ofSelf.container.message_queue.push('test_user_1:: this is a test message');
-            ofSelf.container.message_queue.push('test_user_2:: this is a test message');
-            ofSelf.container.message_queue.push('test_user_3:: HELLO');
-            ofSelf.trigger('message_received',3);
-        },6000);
-
-        window.setTimeout(function(){
-            ofSelf.container.message_queue.push('test:: this is a test message');
-            ofSelf.container.message_queue.push('LucentTear:: I HAVE BEEN ON THIS SITE FOR 2 YEARS');
-            ofSelf.trigger('message_received',5);
-        },7000);
-
-        */
-
 
         /* ##                    ## */
         /* ## Function overrides ## */
         /* ##                    ## */
         window.sendChat = function() {
-            console.log("send chat stub");
             orig_sendChat();
         };
 
@@ -172,6 +132,45 @@
                         return;
                     }
                     return ofSelf.display.close_queued_messages();
+                case 'message_keydown':
+                    //Send message_key the 'event' object from the keyup handler
+                    return ofSelf.message_key(optional_parameter);
+                case 'autocomplete_username':
+                    ofSelf.username_capture = true;
+                    if(typeof $("#message_wrapper").html() == 'undefined'){
+                        $("#message").wrap("<div id='message_wrapper' class=\"ui-widget\">");
+                        $("#message").attr("style","color: #FFF;background-color: transparent;top: 0px; left: 0px; position:absolute;");
+                    }
+                    if($("#message").hasClass("ui-autocomplete-input")){
+                        return;
+                    }
+                    $("#message")
+                        .autocomplete({'source': function(request,response){
+                            response(ofSelf.get_in_chat_array(request));
+                        },select: function(event, ui) {
+                            var TABKEY = 9;
+                            if (event.keyCode == TABKEY) {
+                                event.preventDefault();
+                            }
+                            var h = this.value;
+                            $("#message").val($("#message").val().replace(/@[a-z0-9]+$/i,ui.item.value + " "))
+                                    .focus();
+                            return false;
+                        },
+                        autoFocus: true,
+                        open: function(event, ui){
+                            var $input = $(event.target),
+                                $results = $input.autocomplete("widget"),
+                                top = $results.position().top,
+                                height = $results.height(),
+                                inputHeight = $input.height(),
+                                newTop = top - height - inputHeight;
+                            $results.css("top", newTop + "px");
+                        }
+                    });
+                    return;
+                case 'autocomplete_username_close':
+                    return;
                 default:
                     break;
             }
@@ -203,7 +202,6 @@
                 $("#message_queue").html([anchor,prefix,ofSelf.queued_message_count,"</b>",message_html].join(''));
             },
             'close_queued_messages': function(){
-                console.log("inside close queued message");
                 ofSelf.queued_message_count = 0;
                 ofSelf.queue_messages = false;
                 $("#message_queue").remove();
@@ -226,9 +224,6 @@
 
         window.showQueuedMessages = function(){
             ofSelf.trigger('close_queued_messages');
-            for(var i in ofSelf.container.message_queue){
-                console.log("Message: " + ofSelf.container.message_queue[i]);
-            }
         };
 
         ofSelf.getTable = function(){
@@ -240,6 +235,69 @@
             //TODO: if it contains '@our_user_name' highlight the message
             //TODO: (maybe) play audio sound when our name is mentioned?
             ofSelf.getTable().append(msg);
+        };
+
+        ofSelf.message_key = function(event_object){
+            if(ofSelf.username_capture){
+                if($("#message").val().match(/@+/) === null){
+                    ofSelf.trigger('autocomplete_username_close');
+                }
+            }
+            if(event_object.key == "@"){
+                ofSelf.trigger('autocomplete_username');
+                return;
+            }
+        };
+
+        ofSelf.new_script  = function(src,callback){
+            var s = document.createElement("script");
+            s.type = "text/javascript";
+            s.src = src;
+            if(callback){
+                s.addEventListener('load',callback);
+            }
+            document.body.appendChild(s);
+        };
+
+        ofSelf.new_stylesheet  = function(src){
+            var s = document.createElement("link");
+            s.type = "text/css";
+            s.rel = "stylesheet";
+            s.href = src;
+            document.body.appendChild(s);
+        };
+        ofSelf.embed_raw_css = function(css){
+            var s = document.createElement("style");
+            s.type = "text/css";
+            s.textContent = css;
+            document.body.appendChild(s);
+        };
+        ofSelf.match_last = function(regex){
+            var results = $("#message").val().match(new RegExp('(@[a-z0-9]*)$','i'));
+            if(results){
+                return results.pop();
+            }
+            return null;
+        };
+        ofSelf.get_in_chat_array = function(request){
+            var last_match = ofSelf.match_last();
+            if(!last_match){
+                return [];
+            }
+            var splits = $("#status").html().split(",");
+            if(splits.length == 1){
+                return [];
+            }else{
+                splits[0] = splits[0].replace(/In Chat: /,'');
+                var results = [];
+                for(var i in splits){
+                    var match_this = '@' + splits[i].replace(' ','');
+                    if(last_match === null || match_this.match(new RegExp(last_match + '[a-z0-9]*','i'))){
+                        results.push({ 'label' : '@' + splits[i].replace(' ',''), 'value': '@' + splits[i].replace(' ','') });
+                    }
+                }
+                return results;
+            }
         };
 
         function orig_sendChat(){
@@ -298,9 +356,14 @@
                 });
             }
         }
+
+        ofSelf.new_stylesheet("https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css");
+        ofSelf.new_stylesheet("https://jqueryui.com/resources/demos/style.css");
+        ofSelf.embed_raw_css('#main{  position: absolute;top: 0;left: 0;z-index: 11;background: transparent;}#autocomplete{ position: absolute;top: 0;left: 0;background: transparent;z-index: 10;}');
+        ofSelf.new_script("https://code.jquery.com/ui/1.12.1/jquery-ui.js",function(){
+            ofSelf.trigger('autocomplete_username');
+        });
+        $("div.input-field").attr("style","position:absolute;left:0;right:108px; bottom: 0px;");
     }
 
-    $("body").append(
-        plugin_div.append(activation_button)
-    );
 })();
