@@ -22,13 +22,12 @@
                 return;
             }
             $("#message").trigger('focus');
-        },300);
+        },800);
         return;
     }else{
         //This evaluates if we are in the main window (not chat window)
         //TODO: add button to make window smaller
         override_outer_window_functions();
-        showChat();
         return;
     }
     function override_outer_window_functions(){
